@@ -13,6 +13,9 @@ import pickle as pkl
 from utils import MyDataset
 import yaml
 
+from sklearn.svm import LinearSVC
+from sklearn.feature_selection import SelectFromModel
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 with open('args.yaml', 'r') as f:
@@ -23,6 +26,7 @@ data_type = config['data_type']
 num_epochs = config['num_epochs']
 num_concepts = config['num_concepts']
 loss_weight = config['loss_weight']
+concept_selector = config["concept_selector"]
 
 tokenizer = APETokenizer()
 tokenizer.load_vocabulary('apetokenizer/tokenizer.json')
@@ -35,11 +39,29 @@ DATA['val'] = pd.read_csv(f'data/val_{data_type}.csv')
 DATA['test'] = pd.read_csv(f'data/test_{data_type}.csv')
 
 # choose num_concepts features with llm agent
-features = agent(data_type, DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).columns.tolist(), num_concepts)
-print(features)
-features = ast.literal_eval(features)
+match concept_selector:
+    case "llm":
+        features = agent(data_type, DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).columns.tolist(), num_concepts)
+        features = ast.literal_eval(features)
+        print(features)
+    case "l1":
+        # according to https://scikit-learn.org/stable/modules/feature_selection.html#l1-based-feature-selection
+        X, y = DATA["train"].drop(columns = ['Drug', 'Y', 'Drug_ID']), DATA["train"]["Y"]
+        print(f"shape before: {X.shape}")
+        # train linear support vector classifier with L1 penalty for "feature selection"
+        lsvc = LinearSVC(C=0.01, penalty = "l1", dual = False).fit(X,y)     # C = regularisation parameter, strength inversely proportional to C
+        selector = SelectFromModel(lsvc, prefit = True)
+        X_new = selector.transform(X)
+        # get selected features
+        feature_mask = selector.get_support()
+        features = X.columns[feature_mask].tolist()
+        print(f"shape after: {X_new.shape}")
+        print(features)
+    case _:
+        print("choose a valid concept selector method")
 
-with open(f'model_output_dir/features_llm_{data_type}.pkl', 'wb') as f:
+
+with open(f'model_output_dir/features_llm_{data_type}_{concept_selector}.pkl', 'wb') as f:
     pkl.dump(features, f)
 
 # means and std for standardization
@@ -119,12 +141,12 @@ for epoch in range(num_epochs):
         
     if val_accuracy > best_acc_score:
         best_acc_score = val_accuracy
-        torch.save(model, f'model_output_dir/model_llm_{data_type}.pth')
-        torch.save(ModelXtoCtoY_layer, f'model_output_dir/ModelXtoCtoY_layer_llm_{data_type}.pth')
+        torch.save(model, f'model_output_dir/model_llm_{data_type}_{concept_selector}.pth')
+        torch.save(ModelXtoCtoY_layer, f'model_output_dir/ModelXtoCtoY_layer_llm_{data_type}_{concept_selector}.pth')
 
 ######### test #########
-model = torch.load(f'model_output_dir/model_llm_{data_type}.pth', weights_only=False)
-ModelXtoCtoY_layer = torch.load(f'model_output_dir/ModelXtoCtoY_layer_llm_{data_type}.pth', weights_only=False) 
+model = torch.load(f'model_output_dir/model_llm_{data_type}_{concept_selector}.pth', weights_only=False)
+ModelXtoCtoY_layer = torch.load(f'model_output_dir/ModelXtoCtoY_layer_llm_{data_type}_{concept_selector}.pth', weights_only=False) 
 model.eval()
 ModelXtoCtoY_layer.eval()
 
@@ -150,7 +172,7 @@ with torch.no_grad():
 
     test_accuracy = predict_labels.sum() / len(predict_labels)
 
-    with open(f'model_output_dir/test_loader_llm_{data_type}.pkl', 'wb') as f:
+    with open(f'model_output_dir/test_loader_llm_{data_type}_{concept_selector}.pkl', 'wb') as f:
         pkl.dump(test_loader, f)
     print(f'Test Acc = {test_accuracy*100}')
     print(f'Test roc_auc_score = {roc_auc_score(true_labels, predictions)}')

@@ -214,3 +214,6 @@ venv/
 
 # apetok
 apetokenizer/
+
+# model output dir because files too large for github
+model_output_dir

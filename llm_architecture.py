@@ -36,6 +36,7 @@ DATA['test'] = pd.read_csv(f'data/test_{data_type}.csv')
 
 # choose num_concepts features with llm agent
 features = agent(data_type, DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).columns.tolist(), num_concepts)
+print(features)
 features = ast.literal_eval(features)
 
 with open(f'model_output_dir/features_llm_{data_type}.pkl', 'wb') as f:

@@ -41,6 +41,7 @@ val_data = pd.read_csv(f"data/val_{data_type}.csv")
 # choose num_concepts features with llm agent
 features = agent(data_type, train_data.drop(columns=['Drug', 'Y', 'Drug_ID']).columns.tolist(), num_concepts)
 features = ast.literal_eval(features)
+print(f"selected concepts = {features}")
 
 with open(f'model_output_dir/features_gnn_{data_type}.pkl', 'wb') as f:
     pkl.dump(features, f)
@@ -73,8 +74,12 @@ for epoch in range(num_epochs):
     model.train()
     for data in train_loader:
         data = data.to(device)
+        #print(f"data: {data.shape}")
+        #print(f"concepts: {data.concepts.shape}")
+        #print(f"squeezed concepts: {data.concepts.squeeze().shape}")
         optimizer.zero_grad()
         output = model(data)
+        #print(f"output: {output.shape}")
         outputs = ModelXtoCtoY_layer(output)
         XtoC_output = outputs[1:] 
         XtoY_output = outputs[0:1]

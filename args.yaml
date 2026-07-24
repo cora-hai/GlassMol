@@ -4,4 +4,4 @@ data_type: 'dili'
 num_epochs: 200
 num_concepts: 29
 loss_weight: 1.0
-concept_selector: "l1"
+concept_selector: "late-l1"
